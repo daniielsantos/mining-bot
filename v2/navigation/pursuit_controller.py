@@ -141,8 +141,9 @@ class PursuitController:
       )
     )
     # GOTO walk: sem progresso de dist → path blocked.
-    # Até stuck_d_max_attempts: pulse D (stuck_d_hold_ms) e retoma walk.
-    # Só então mark_stuck + SCAN. 0 em stuck_idle_s desliga. Só fora de
+    # Até stuck_d_max_attempts: cada tentativa = Space (stuck_space_hold_ms) →
+    # realign+walk; se ainda stuck → D (stuck_d_hold_ms) + realign. Só então
+    # mark_stuck + SCAN. 0 em stuck_idle_s desliga. Só fora de
     # fine_align / close_walk / final / READY.
     # `_stuck_d_attempts` é per-lock (não zera em jitter de dist).
     # stuck_min_dist default = arrive_px: stuck while not yet arrived (dist > arrive).
@@ -156,6 +157,9 @@ class PursuitController:
     )
     self.stuck_progress_px = float(
       nav.get("stuck_progress_px", pursuit.get("stuck_progress_px", 1.5))
+    )
+    self.stuck_space_hold_ms = float(
+      nav.get("stuck_space_hold_ms", pursuit.get("stuck_space_hold_ms", 150.0))
     )
     self.stuck_d_hold_ms = float(
       nav.get("stuck_d_hold_ms", pursuit.get("stuck_d_hold_ms", 2000.0))
@@ -232,7 +236,9 @@ class PursuitController:
     self._stuck_best_dist: float | None = None
     # Per-lock: D-strafe recoveries before blacklist/switch (0..max).
     self._stuck_d_attempts: int = 0
-    # Após pulse D: obriga realign de câmera (sem W) até |brg| ≤ stuck_align_deg.
+    # Após Space neste ciclo: próximo stuck faz D (não outro Space).
+    self._stuck_awaiting_d: bool = False
+    # Após pulse Space/D: obriga realign de câmera (sem W) até |brg| ≤ stuck_align_deg.
     self._need_post_stuck_realign: bool = False
 
   _STUCK_SKIP_PHASES = frozenset(
@@ -253,6 +259,7 @@ class PursuitController:
 
   def _reset_stuck_d_attempts(self) -> None:
     self._stuck_d_attempts = 0
+    self._stuck_awaiting_d = False
     self._need_post_stuck_realign = False
 
   def _clear_close_walk(self) -> None:
@@ -588,15 +595,35 @@ class PursuitController:
       return True
     return False
 
+  def recover_stuck_space(self) -> str:
+    """
+    STUCK/IDLE recovery step A: solta W, tap Space (stuck_space_hold_ms).
+
+    Não incrementa `_stuck_d_attempts`. Marca `_stuck_awaiting_d` para o
+    próximo stuck fazer D. Após o tap, arma realign + walk ao lock.
+    """
+    hold_ms = float(self.stuck_space_hold_ms)
+    pulse = getattr(self.walker, "pulse_space", None)
+    if callable(pulse):
+      action = pulse(hold_ms=hold_ms)
+    else:
+      action = f"space-{hold_ms:.0f}ms"
+    self._stuck_awaiting_d = True
+    self._reset_stuck_idle()
+    self._need_post_stuck_realign = True
+    self._smooth_heading = None
+    return str(action)
+
   def recover_stuck_d(self) -> str:
     """
-    STUCK/IDLE recovery: solta W, segura D (stuck_d_hold_ms), solta D.
+    STUCK/IDLE recovery step B: solta W, segura D (stuck_d_hold_ms), solta D.
 
-    Incrementa `_stuck_d_attempts`. Após o pulse, arma realign obrigatório
+    Incrementa `_stuck_d_attempts`. Limpa `_stuck_awaiting_d` (próximo ciclo
+    começa com Space de novo). Após o pulse, arma realign obrigatório
     (sem W) até |brg| ≤ stuck_align_deg — evita retomar walk de lado.
     Limpa `_smooth_heading` para o próximo frame não herdar rumo pré-strafe
     (clamp bearing_max_jump).
-    Caller só invoca se attempts < max.
+    Caller só invoca se attempts < max e Space já foi tentado neste ciclo.
     """
     hold_ms = float(self.stuck_d_hold_ms)
     pulse = getattr(self.walker, "pulse_strafe_d", None)
@@ -605,6 +632,7 @@ class PursuitController:
     else:
       action = f"strafe-d-{hold_ms:.0f}ms"
     self._stuck_d_attempts = int(self._stuck_d_attempts) + 1
+    self._stuck_awaiting_d = False
     self._reset_stuck_idle()
     # Não usar _reset_stuck_d_attempts (zera o contador).
     self._need_post_stuck_realign = True

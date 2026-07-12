@@ -58,12 +58,14 @@ SCAN sem nós (lock_nearest=None): sub-estado SCAN_SPIN — pulsos de câmera
   à esquerda (~360° via pixels_per_deg); cada pulse tenta lock de novo;
   lock cancela o spin → GOTO; após 360° pausa breve e repete (até F6 off).
 GOTO walk sem progresso de dist (`stuck_idle_s`) → até `stuck_d_max_attempts`
-  pulses D (`stuck_d_hold_ms`); após cada D, realign de câmera (sem W) até
-  |brg| ≤ stuck_align_deg / walk_max; só então retoma W. Depois mark_stuck + SCAN.
+  ciclos Space→realign/walk→D (`stuck_space_hold_ms` / `stuck_d_hold_ms`);
+  após cada Space/D, realign de câmera (sem W) até |brg| ≤ stuck_align_deg /
+  walk_max; só então retoma W. Depois mark_stuck + SCAN.
   Cada give-up append na blacklist (multi-nó); limpa em READY (Mining ore).
   stuck_idle só em GOTO walk — nunca em READY (phase branch separado).
   `_stuck_d_attempts` reseta só em novo lock / mark_done / reset (não em
   jitter de dist — senão nunca chega a 3× D no mesmo alvo).
+  Space precede cada D e não conta no teto de 3.
 Lost-target: só quando `pursuit.target is None` (ghost abandon). Frame sem
   scan/arrow NÃO demote a SCAN (evita lock órfão + linha verde congelada + spin).
 Após lost-target: cooldown `lock_reacquire_cooldown_s`; spin-gate só segura
@@ -932,13 +934,13 @@ class Brain:
     """
     Path blocked no GOTO walk.
 
-    Até stuck_d_max_attempts: solta W, segura D, arma realign pós-D
-    (próximos ticks: câmera até |brg| ok, depois W — mesmo lock).
+    Até stuck_d_max_attempts: (A) Space + realign/walk; se ainda stuck →
+    (B) D + realign/walk. Space não incrementa o contador D.
     Depois: force-avoid XY e re-SCAN (outro lock).
 
     Nunca invocar em READY / FINAL / e_held / ore forte — caller gateia.
     """
-    # Defesa: se E ainda held (mine), não strafe D.
+    # Defesa: se E ainda held (mine), não Space/D.
     if getattr(self.walker, "e_held_for_mine", False) is True:
       self.pursuit.stop_walk()
       reset_idle = getattr(self.pursuit, "_reset_stuck_idle", None)
@@ -949,6 +951,17 @@ class Brain:
     max_att = int(self.pursuit.stuck_d_max_attempts)
     if attempts < max_att:
       self.pursuit.stop_walk()
+      if not bool(self.pursuit._stuck_awaiting_d):
+        action = self.pursuit.recover_stuck_space()
+        mlog(
+          f"[v2] STUCK/IDLE — Space before D "
+          f"(D budget {attempts}/{max_att}, "
+          f"{self.pursuit.stuck_space_hold_ms:.0f}ms) dist={dist_px:.0f}px "
+          f"— next realign then W"
+        )
+        return (
+          str(action) if str(action).startswith("space") else "stuck-idle-space"
+        )
       action = self.pursuit.recover_stuck_d()
       n = int(self.pursuit._stuck_d_attempts)
       mlog(
@@ -1376,11 +1389,11 @@ class Brain:
             dist_px=pursuit.dist_px,
             target_dot=pursuit.target_dot,
           )
-          # Pós D: realign obrigatório (sem W) — não conta como walk p/ stuck.
-          # realign-* normal (rumo grande) NÃO é STUCK — só pós recover_stuck_d.
+          # Pós Space/D: realign obrigatório (sem W) — não conta como walk p/ stuck.
+          # realign-* normal (rumo grande) NÃO é STUCK — só pós recover stuck.
           if self.pursuit._need_post_stuck_realign:
             expecting_walk = False
-            nav_status = "STUCK/IDLE realign after D"
+            nav_status = "STUCK/IDLE realign after recover"
             move_phase = "stuck_d_realign"
           elif str(action).startswith("realign"):
             expecting_walk = False
@@ -1399,6 +1412,9 @@ class Brain:
             elif action == "stuck-skip-mining":
               nav_status = "GOTO hold (mining)"
               move_phase = "idle"
+            elif str(action).startswith("space"):
+              nav_status = "STUCK/IDLE Space recover"
+              move_phase = "stuck_space_recover"
             else:
               nav_status = "STUCK/IDLE D recover"
               move_phase = "stuck_d_recover"

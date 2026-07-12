@@ -1,4 +1,4 @@
-"""GOTO walk sem progresso de dist → D recover ×N → mark_stuck + SCAN."""
+"""GOTO walk sem progresso → Space → realign/walk → D ×N → mark_stuck + SCAN."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ def _cfg(**nav_extra):
     "stuck_idle_s": 1.5,
     "stuck_progress_px": 1.5,
     "stuck_align_deg": 12,
+    "stuck_space_hold_ms": 150,
     "stuck_d_hold_ms": 2000,
     "stuck_d_max_attempts": 3,
     "stuck_avoid_ttl_s": 45.0,
@@ -90,9 +91,11 @@ def test_stuck_min_dist_defaults_to_arrive():
 
 def test_stuck_d_config_defaults():
   pc = PursuitController(_cfg(), MagicMock())
+  assert pc.stuck_space_hold_ms == 150.0
   assert pc.stuck_d_hold_ms == 2000.0
   assert pc.stuck_d_max_attempts == 3
   assert pc._stuck_d_attempts == 0
+  assert pc._stuck_awaiting_d is False
 
 
 def test_stuck_idle_triggers_after_no_progress(monkeypatch):
@@ -230,10 +233,29 @@ def test_stuck_idle_skips_fine_align_and_arrived(monkeypatch):
   )
 
 
+def test_recover_stuck_space_arms_post_realign():
+  """Space: flag awaiting_d + realign; D attempts intactos."""
+  pc = PursuitController(_cfg(), MagicMock())
+  pc._smooth_heading = 2.0
+  pc._stuck_d_attempts = 1
+  pc.walker = MagicMock()
+  pc.walker.pulse_space = MagicMock(return_value="space-150ms")
+
+  action = pc.recover_stuck_space()
+
+  assert action == "space-150ms"
+  assert pc._stuck_d_attempts == 1
+  assert pc._stuck_awaiting_d is True
+  assert pc._need_post_stuck_realign is True
+  assert pc._smooth_heading is None
+  pc.walker.pulse_space.assert_called_once_with(hold_ms=150.0)
+
+
 def test_recover_stuck_d_arms_post_realign():
   """Após pulse D: flag realign + smooth heading limpo (sem clamp pré-strafe)."""
   pc = PursuitController(_cfg(), MagicMock())
   pc._smooth_heading = 2.0
+  pc._stuck_awaiting_d = True
   pc.walker = MagicMock()
   pc.walker.pulse_strafe_d = MagicMock(return_value="strafe-d-2000ms")
 
@@ -241,6 +263,7 @@ def test_recover_stuck_d_arms_post_realign():
 
   assert action == "strafe-d-2000ms"
   assert pc._stuck_d_attempts == 1
+  assert pc._stuck_awaiting_d is False
   assert pc._need_post_stuck_realign is True
   assert pc._smooth_heading is None
 
@@ -289,36 +312,52 @@ def test_walk_after_stuck_d_keeps_realign_while_misaligned():
   assert pc.walker.tick.call_args.kwargs["force_realign"] is True
 
 
-def test_brain_stuck_idle_d_recover_keeps_lock():
-  """Primeiros stucks: D recover, permanece GOTO, sem mark_stuck."""
+def test_brain_stuck_idle_space_then_d_keeps_lock():
+  """1º stuck = Space; 2º = D; permanece GOTO, sem mark_stuck."""
   brain = Brain(_cfg(), node_detector=MagicMock())
   brain.phase = Phase.GOTO
   brain._allow_auto_lock = False
   brain.pursuit.stop_walk = MagicMock(return_value="stop")
   brain.pursuit.mark_stuck = MagicMock()
   brain.pursuit._stuck_d_attempts = 0
+  brain.pursuit._stuck_awaiting_d = False
   brain.pursuit.stuck_d_max_attempts = 3
+
+  def _space():
+    brain.pursuit._stuck_awaiting_d = True
+    brain.pursuit._need_post_stuck_realign = True
+    return "space-150ms"
 
   def _recover():
     brain.pursuit._stuck_d_attempts += 1
+    brain.pursuit._stuck_awaiting_d = False
     brain.pursuit._need_post_stuck_realign = True
     return "strafe-d-2000ms"
 
+  brain.pursuit.recover_stuck_space = MagicMock(side_effect=_space)
   brain.pursuit.recover_stuck_d = MagicMock(side_effect=_recover)
 
   action = brain._handle_stuck_idle(dist_px=19.0)
+  assert action == "space-150ms"
+  assert brain.phase == Phase.GOTO
+  assert brain.pursuit._stuck_d_attempts == 0
+  assert brain.pursuit._stuck_awaiting_d is True
+  brain.pursuit.recover_stuck_space.assert_called_once()
+  brain.pursuit.recover_stuck_d.assert_not_called()
+  brain.pursuit.mark_stuck.assert_not_called()
 
+  action = brain._handle_stuck_idle(dist_px=19.0)
   assert action == "strafe-d-2000ms"
   assert brain.phase == Phase.GOTO
   assert brain.pursuit._stuck_d_attempts == 1
+  assert brain.pursuit._stuck_awaiting_d is False
   assert brain.pursuit._need_post_stuck_realign is True
   brain.pursuit.mark_stuck.assert_not_called()
-  brain.pursuit.stop_walk.assert_called_once()
   brain.pursuit.recover_stuck_d.assert_called_once()
 
 
 def test_brain_stuck_idle_three_d_then_switch():
-  """3× D recover → 4º stuck blacklista e SCAN."""
+  """3× (Space→D) → 7º stuck blacklista e SCAN. Space não conta no teto D."""
   brain = Brain(_cfg(), node_detector=MagicMock())
   brain.phase = Phase.GOTO
   brain._allow_auto_lock = False
@@ -326,18 +365,33 @@ def test_brain_stuck_idle_three_d_then_switch():
   brain.pursuit.mark_stuck = MagicMock()
   brain.pursuit.stuck_d_max_attempts = 3
   brain.pursuit._stuck_d_attempts = 0
+  brain.pursuit._stuck_awaiting_d = False
+
+  def _space():
+    brain.pursuit._stuck_awaiting_d = True
+    return "space-150ms"
 
   def _recover():
     brain.pursuit._stuck_d_attempts += 1
+    brain.pursuit._stuck_awaiting_d = False
     return "strafe-d-2000ms"
 
+  brain.pursuit.recover_stuck_space = MagicMock(side_effect=_space)
   brain.pursuit.recover_stuck_d = MagicMock(side_effect=_recover)
 
   for i in range(3):
     action = brain._handle_stuck_idle(dist_px=19.0)
+    assert action == "space-150ms"
+    assert brain.phase == Phase.GOTO
+    assert brain.pursuit._stuck_d_attempts == i
+    assert brain.pursuit._stuck_awaiting_d is True
+    brain.pursuit.mark_stuck.assert_not_called()
+
+    action = brain._handle_stuck_idle(dist_px=19.0)
     assert action == "strafe-d-2000ms"
     assert brain.phase == Phase.GOTO
     assert brain.pursuit._stuck_d_attempts == i + 1
+    assert brain.pursuit._stuck_awaiting_d is False
     brain.pursuit.mark_stuck.assert_not_called()
 
   action = brain._handle_stuck_idle(dist_px=19.0)
@@ -345,7 +399,9 @@ def test_brain_stuck_idle_three_d_then_switch():
   assert brain.phase == Phase.SCAN
   assert brain._allow_auto_lock is True
   assert brain.pursuit._stuck_d_attempts == 0
+  assert brain.pursuit._stuck_awaiting_d is False
   brain.pursuit.mark_stuck.assert_called_once()
+  assert brain.pursuit.recover_stuck_space.call_count == 3
   assert brain.pursuit.recover_stuck_d.call_count == 3
 
 
@@ -374,6 +430,7 @@ def test_three_d_then_switch_locks_other_node(monkeypatch):
   pc._smooth_facing = -90.0
   pc.stuck_d_max_attempts = 3
   pc._stuck_d_attempts = 0
+  pc._stuck_awaiting_d = False
 
   brain = Brain(_cfg(), node_detector=MagicMock())
   brain.phase = Phase.GOTO
@@ -382,14 +439,19 @@ def test_three_d_then_switch_locks_other_node(monkeypatch):
   brain.pursuit.stop_walk = MagicMock(return_value="stop")
   brain.pursuit.walker = MagicMock()
   brain.pursuit.walker.e_held_for_mine = False
+  brain.pursuit.walker.pulse_space = MagicMock(return_value="space-150ms")
   brain.pursuit.walker.pulse_strafe_d = MagicMock(return_value="strafe-d-2000ms")
 
   for _ in range(3):
+    assert brain._handle_stuck_idle(dist_px=40.0).startswith("space")
+    assert brain.phase == Phase.GOTO
+    assert pc._lock is not None
     assert brain._handle_stuck_idle(dist_px=40.0).startswith("strafe-d")
     assert brain.phase == Phase.GOTO
     assert pc._lock is not None
 
   assert pc._stuck_d_attempts == 3
+  assert pc._stuck_awaiting_d is False
 
   t0 = 5000.0
   monkeypatch.setattr(
@@ -420,6 +482,7 @@ def test_three_d_then_switch_locks_other_node(monkeypatch):
   assert pick.x == other.x
   assert pick.y == other.y
   assert pc._stuck_d_attempts == 0
+  assert pc._stuck_awaiting_d is False
 
 
 def test_new_lock_resets_stuck_d_attempts():
@@ -428,9 +491,11 @@ def test_new_lock_resets_stuck_d_attempts():
   a = _node(200.0, 156.0, dist=40.0)
   b = _node(160.0, 100.0, dist=56.0)
   pc._stuck_d_attempts = 3
+  pc._stuck_awaiting_d = True
   pick = pc.lock_nearest(_scan([a, b]), facing_deg=-90.0)
   assert pick is not None
   assert pc._stuck_d_attempts == 0
+  assert pc._stuck_awaiting_d is False
 
 
 def test_brain_stuck_idle_switches_lock():
@@ -442,6 +507,7 @@ def test_brain_stuck_idle_switches_lock():
   brain.pursuit.mark_stuck = MagicMock()
   brain.pursuit._stuck_d_attempts = 3
   brain.pursuit.stuck_d_max_attempts = 3
+  brain.pursuit._stuck_awaiting_d = True
 
   action = brain._handle_stuck_idle(dist_px=19.0)
 
@@ -449,6 +515,7 @@ def test_brain_stuck_idle_switches_lock():
   assert brain.phase == Phase.SCAN
   assert brain._allow_auto_lock is True
   assert brain.pursuit._stuck_d_attempts == 0
+  assert brain.pursuit._stuck_awaiting_d is False
   brain.pursuit.mark_stuck.assert_called_once()
   brain.pursuit.stop_walk.assert_called_once()
 
@@ -671,22 +738,24 @@ def test_enter_ready_clears_stuck_blacklist():
 
 
 def test_handle_stuck_idle_skips_when_e_held():
-  """E held (mine) → sem D strafe / mark_stuck."""
+  """E held (mine) → sem Space/D / mark_stuck."""
   brain = Brain(_cfg(), node_detector=MagicMock())
   brain.phase = Phase.GOTO
   brain.walker.e_held_for_mine = True
   brain.pursuit.stop_walk = MagicMock(return_value="stop")
+  brain.pursuit.recover_stuck_space = MagicMock(return_value="space-150ms")
   brain.pursuit.recover_stuck_d = MagicMock(return_value="strafe-d-2000ms")
   brain.pursuit._reset_stuck_idle = MagicMock()
 
   action = brain._handle_stuck_idle(dist_px=40.0)
   assert action == "stuck-skip-mining"
+  brain.pursuit.recover_stuck_space.assert_not_called()
   brain.pursuit.recover_stuck_d.assert_not_called()
   brain.pursuit.stop_walk.assert_called()
 
 
 def test_ready_mine_hold_tick_never_calls_stuck(monkeypatch):
-  """READY mine-hold: check_stuck_idle / recover_stuck_d não rodam."""
+  """READY mine-hold: check_stuck_idle / recover stuck não rodam."""
   brain = Brain(_cfg(), node_detector=MagicMock())
   brain.phase = Phase.READY_INTERACT
   brain._mining_label_seen = True
@@ -697,6 +766,7 @@ def test_ready_mine_hold_tick_never_calls_stuck(monkeypatch):
   brain.walker.begin_probe_e = MagicMock()
   brain.pursuit.stop_walk = MagicMock(return_value="stop")
   brain.pursuit.check_stuck_idle = MagicMock(return_value=True)
+  brain.pursuit.recover_stuck_space = MagicMock(return_value="space-150ms")
   brain.pursuit.recover_stuck_d = MagicMock(return_value="strafe-d-2000ms")
   brain._handle_stuck_idle = MagicMock(return_value="stuck-idle-d-recover")
 
@@ -727,6 +797,7 @@ def test_ready_mine_hold_tick_never_calls_stuck(monkeypatch):
   assert out.action == "mine-hold"
   brain.pursuit.check_stuck_idle.assert_not_called()
   brain._handle_stuck_idle.assert_not_called()
+  brain.pursuit.recover_stuck_space.assert_not_called()
   brain.pursuit.recover_stuck_d.assert_not_called()
 
 

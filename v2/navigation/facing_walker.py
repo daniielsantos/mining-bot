@@ -178,6 +178,19 @@ class FacingWalkController:
     self._last_action = "interact-e"
     return self._last_action
 
+  def pulse_space(self, *, hold_ms: float = 150.0) -> str:
+    """STUCK recovery step A: tap Space (jump) before D strafe."""
+    if not IS_WINDOWS:
+      self._last_action = "space-skip"
+      return self._last_action
+    release_key("w")
+    self._release_steer()
+    ms = max(1.0, float(hold_ms))
+    tap_key("space", hold_ms=ms)
+    self._last_steer = None
+    self._last_action = f"space-{ms:.0f}ms"
+    return self._last_action
+
   def pulse_strafe_d(self, *, hold_ms: float = 2000.0) -> str:
     """STUCK recovery: solta W/A, segura D, solta D."""
     if not IS_WINDOWS:
