@@ -8,8 +8,8 @@ from typing import Any
 import cv2
 import numpy as np
 
-from display import add_status_bar, fit_width
-from screen_ui import MiningScreenUI
+from v2.vendor.display import add_status_bar, fit_width
+from v2.vendor.screen_ui import MiningScreenUI
 from v2.core.types import FrameContext
 from v2.navigation.bearing import forward_heading_deg
 

@@ -17,19 +17,19 @@ import sys
 import time
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-  sys.path.insert(0, str(_ROOT))
+_PKG_ROOT = Path(__file__).resolve().parent.parent
+if str(_PKG_ROOT) not in sys.path:
+  sys.path.insert(0, str(_PKG_ROOT))
 
-import bootstrap
+import v2.bootstrap as bootstrap
 
 bootstrap.setup()
 
 import cv2
 import numpy as np
 
-from display import add_status_bar, fit_width
-from logger import mlog
+from v2.vendor.display import add_status_bar, fit_width
+from v2.vendor.logger import mlog
 from v2.capture.grabber import Grabber
 from v2.color_calibrate import (
   apply_gray_to_runtime,

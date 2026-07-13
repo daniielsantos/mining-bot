@@ -1,4 +1,4 @@
-"""Carrega config: base legada + overlay v2."""
+"""Carrega config v2 (self-contained — sem mining_bot/config.json)."""
 
 from __future__ import annotations
 
@@ -7,10 +7,8 @@ from pathlib import Path
 from typing import Any
 
 _V2_DIR = Path(__file__).resolve().parent.parent
-_MINING_BOT = _V2_DIR.parent
-_DEFAULT_V1 = _MINING_BOT / "config.json"
+_DEFAULT = _V2_DIR / "config.example.json"
 _V2_CONFIG = _V2_DIR / "config.json"
-_V2_EXAMPLE = _V2_DIR / "config.example.json"
 
 
 _LIST_MERGE_KEYS = frozenset({"game_foreground_keywords", "game_process_names"})
@@ -36,16 +34,16 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
 
 
 def load_config(path: Path | None = None) -> dict[str, Any]:
-  if _DEFAULT_V1.is_file():
-    cfg = json.loads(_DEFAULT_V1.read_text(encoding="utf-8"))
+  if _DEFAULT.is_file():
+    cfg = json.loads(_DEFAULT.read_text(encoding="utf-8"))
   else:
     cfg = {}
 
   overlay_path = path
-  if overlay_path is None:
-    overlay_path = _V2_CONFIG if _V2_CONFIG.is_file() else _V2_EXAMPLE
+  if overlay_path is None and _V2_CONFIG.is_file():
+    overlay_path = _V2_CONFIG
 
-  if overlay_path.is_file():
+  if overlay_path is not None and overlay_path.is_file():
     overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
     cfg = _deep_merge(cfg, overlay)
 

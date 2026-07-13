@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from node_detector import TargetLock as V1TargetLock
+from v2.vendor.node_detector import TargetLock as V1TargetLock
 from v2.core.types import Blip, FrameContext, HudState, Phase
 from v2.perception.arrow import detect_arrow
 from v2.perception.hud import detect_hud
@@ -101,7 +101,7 @@ def perceive(
       )
     )
     if ore_found or ore_score >= ore_thresh:
-      from screen_ui import MiningUIResult
+      from v2.vendor.screen_ui import MiningUIResult
 
       hud = HudState(
         mining_active=ore_found or hud.mining_active,

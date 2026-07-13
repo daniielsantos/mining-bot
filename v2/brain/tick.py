@@ -79,8 +79,8 @@ import time
 from collections import deque
 from typing import Any
 
-from logger import mlog
-from node_detector import NodeScanResult
+from v2.vendor.logger import mlog
+from v2.vendor.node_detector import NodeScanResult
 from v2.core.types import FrameContext, Phase, TargetLock as V2TargetLock
 from v2.navigation.bearing import FIRST_PERSON_FORWARD_DEG, forward_heading_deg
 from v2.navigation.pursuit_controller import PursuitController

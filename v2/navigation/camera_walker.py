@@ -14,7 +14,14 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from keyboard_input import IS_WINDOWS, mouse_camera_look, press_key, release_all_keys, release_key, tap_key
+from v2.vendor.keyboard_input import (
+  IS_WINDOWS,
+  mouse_camera_look,
+  press_key,
+  release_all_keys,
+  release_key,
+  tap_key,
+)
 
 
 class CameraAlignController:

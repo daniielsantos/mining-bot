@@ -28,11 +28,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-  sys.path.insert(0, str(_ROOT))
+_PKG_ROOT = Path(__file__).resolve().parent.parent
+if str(_PKG_ROOT) not in sys.path:
+  sys.path.insert(0, str(_PKG_ROOT))
 
-import bootstrap
+import v2.bootstrap as bootstrap
 
 bootstrap.setup()
 
@@ -40,15 +40,15 @@ import cv2
 import numpy as np
 from pynput import keyboard
 
-from display import add_status_bar, fit_width
-from keyboard_input import (
+from v2.vendor.display import add_status_bar, fit_width
+from v2.vendor.keyboard_input import (
   IS_WINDOWS,
   get_foreground_window_title,
   is_game_foreground,
   mouse_camera_look,
 )
-from logger import mlog
-from navigator import normalize_angle_deg
+from v2.vendor.logger import mlog
+from v2.vendor.navigator import normalize_angle_deg
 from v2.capture.grabber import Grabber
 from v2.core.config import load_config, save_overlay_patch
 from v2.core.legacy import build_perception_stack

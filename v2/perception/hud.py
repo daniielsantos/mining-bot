@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from screen_ui import MiningUIResult
+from v2.vendor.screen_ui import MiningUIResult
 
 from v2.core.types import HudState
 

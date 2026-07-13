@@ -1,9 +1,10 @@
 """
-Mining Bot v2 — blip-only.
+Mining Bot v2 — blip-only (standalone).
 
-  cd mining_bot
+  cd mining_bot/v2          # ou copie só esta pasta
+  pip install -r requirements.txt
   python -m v2.main --preview
-  python -m v2.main
+  python main.py --preview   # alternativa (mesma pasta v2/)
 
 Controles: F6 liga/desliga | F7 pausa | F9 sai | F8 proximo alvo
   E = proximo so em idle (READY/SCAN/…) — nunca no FINAL_APPROACH (probe Mining ore).
@@ -27,19 +28,24 @@ import sys
 import time
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent.parent
-if str(_ROOT) not in sys.path:
-  sys.path.insert(0, str(_ROOT))
+_PKG_ROOT = Path(__file__).resolve().parent.parent
+if str(_PKG_ROOT) not in sys.path:
+  sys.path.insert(0, str(_PKG_ROOT))
 
-import bootstrap
+import v2.bootstrap as bootstrap
 
 bootstrap.setup()
 
 import cv2
 from pynput import keyboard
 
-from keyboard_input import IS_WINDOWS, get_foreground_window_title, is_game_foreground, release_all_keys
-from logger import close_log, init_log, mlog
+from v2.vendor.keyboard_input import (
+  IS_WINDOWS,
+  get_foreground_window_title,
+  is_game_foreground,
+  release_all_keys,
+)
+from v2.vendor.logger import close_log, init_log, mlog
 from v2.brain.tick import Brain
 from v2.capture.grabber import Grabber
 from v2.color_calibrate import (
@@ -134,7 +140,8 @@ def main() -> None:
 
   recorder = SessionRecorder(
     cfg,
-    _ROOT / str(cfg.get("debug", {}).get("record_dir", "debug_captures_v2")),
+    Path(__file__).resolve().parent
+    / str(cfg.get("debug", {}).get("record_dir", "debug_captures_v2")),
   )
 
   enabled = False

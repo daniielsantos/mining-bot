@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
   sys.path.insert(0, str(ROOT))
 
-from node_detector import MiningNodeDetector  # noqa: E402
+from v2.vendor.node_detector import MiningNodeDetector  # noqa: E402
 
 
 def _detector(**overrides) -> MiningNodeDetector:

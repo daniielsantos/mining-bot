@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from navigator import facing_relative_error
+from v2.vendor.navigator import facing_relative_error
 
 from v2.core.types import ArrowState
 

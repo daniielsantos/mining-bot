@@ -19,7 +19,7 @@
   "navigation": {
     "control_mode": "camera",
     "align_deg": 8,
-    "arrive_px": 15,
+    "arrive_px": 16,
     "yellow_ray_px": 15,
     "close_walk_px": 15,
     "close_walk_max_s": 2.8,

@@ -13,7 +13,7 @@ import numpy as np
 _MB = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_MB))
 
-from node_detector import MiningNode, NodeScanResult, TargetLock
+from v2.vendor.node_detector import MiningNode, NodeScanResult, TargetLock
 from v2.brain.tick import Brain
 from v2.core.types import ArrowState, FrameContext, HudState, Phase
 from v2.navigation.pursuit_controller import PursuitController

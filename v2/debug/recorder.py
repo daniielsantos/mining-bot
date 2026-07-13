@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 
-from debug_capture import SessionFrameRecorder
+from v2.vendor.debug_capture import SessionFrameRecorder
 from v2.core.types import FrameContext
 
 

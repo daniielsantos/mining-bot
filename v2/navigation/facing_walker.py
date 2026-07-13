@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from keyboard_input import IS_WINDOWS, press_key, release_all_keys, release_key, tap_key
+from v2.vendor.keyboard_input import IS_WINDOWS, press_key, release_all_keys, release_key, tap_key
 from progress_nav import NavProgressTracker
 
 

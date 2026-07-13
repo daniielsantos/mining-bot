@@ -14,10 +14,16 @@ import time
 from dataclasses import dataclass, replace
 from typing import Any
 
-from bot import resolve_heading_error, smooth_heading_error, stable_facing_deg
-from logger import mlog
-from navigator import camera_heading_from_arrow, normalize_angle_deg
-from node_detector import MiningNode, MiningNodeDetector, NodeScanResult, TargetLock, bearing_deg
+from v2.vendor.builders import resolve_heading_error, smooth_heading_error, stable_facing_deg
+from v2.vendor.logger import mlog
+from v2.vendor.navigator import camera_heading_from_arrow, normalize_angle_deg
+from v2.vendor.node_detector import (
+  MiningNode,
+  MiningNodeDetector,
+  NodeScanResult,
+  TargetLock,
+  bearing_deg,
+)
 from progress_nav import arrow_to_target_with_dot
 from visual_nav import VisualPursuitNavigator
 from v2.navigation.bearing import (

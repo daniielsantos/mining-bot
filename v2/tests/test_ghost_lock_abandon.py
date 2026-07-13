@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 _MB = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_MB))
 
-from node_detector import MiningNode, NodeScanResult, TargetLock
+from v2.vendor.node_detector import MiningNode, NodeScanResult, TargetLock
 from v2.navigation.pursuit_controller import PursuitController
 
 
